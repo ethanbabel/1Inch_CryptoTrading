@@ -5,20 +5,20 @@ AWS_REGION = "us-west-1"
 SENDER_EMAIL = "ebabelCryptoArb@gmail.com"
 
 
-def send_email(RECIPIENT_EMAIL, subject, message):
+def send_email(recipient_emails, subject, message):
     """Send an email notification using Amazon SES."""
     client = boto3.client("ses", region_name=AWS_REGION)
 
     try:
         response = client.send_email(
             Source=SENDER_EMAIL,
-            Destination={"ToAddresses": [RECIPIENT_EMAIL]},
+            Destination={"ToAddresses": recipient_emails},
             Message={
                 "Subject": {"Data": subject},
                 "Body": {"Text": {"Data": message}},
             },
         )
-        print(f"Email sent to {RECIPIENT_EMAIL}. Message ID: {response['MessageId']}")
+        print(f"Email sent to {recipient_emails}. Message ID: {response['MessageId']}")
     except Exception as e:
         print(f"Error sending email: {e}")
 
