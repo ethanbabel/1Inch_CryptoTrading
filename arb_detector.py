@@ -8,29 +8,39 @@ class ArbitrageDetector:
         """Initialize the detector with a token exchange rate graph."""
         self.graph = graph
         self.emails = ["babelethan@gmail.com"]
-        self.tokens = list(graph.keys())
         self.log_file = "arbitrage_log.txt"  # Define the log file name
 
     def transform_graph(self):
-        """Transforms exchange rates into negative log weights for Bellman-Ford."""
-        log_graph = {token: {} for token in self.tokens}
-        for token in self.tokens:
+        """Transforms the graph weights to negative log values for arbitrage detection."""
+        transformed_graph = {}
+
+        for token in self.graph:
+            transformed_graph[token] = {}
             for neighbor, rate in self.graph[token].items():
-                log_graph[token][neighbor] = -math.log(rate)
-        return log_graph
+                if rate > 0:  # Avoid division by zero
+                    transformed_graph[token][neighbor] = -math.log(rate)
+
+        return transformed_graph
 
     def bellman_ford_all_cycles(self, start_token):
-        """Runs Bellman-Ford once and detects all unique arbitrage cycles efficiently."""
+        """Runs Bellman-Ford once and detects all unique arbitrage cycles efficiently, handling missing tokens gracefully."""
         transformed_graph = self.transform_graph()
-        n = len(self.tokens)
-        distances = {token: float("inf") for token in self.tokens}
-        predecessors = {token: None for token in self.tokens}
+        
+        # Ensure start_token exists in the graph
+        if start_token not in transformed_graph:
+            print(f"⚠️ Warning: {start_token} is missing from the graph. Skipping.")
+            return []  # Skip if token data is missing
+
+        distances = {token: float("inf") for token in transformed_graph}
+        predecessors = {token: None for token in transformed_graph}
         distances[start_token] = 0
 
         # Relax edges (n-1) times
-        for _ in range(n - 1):
-            for token in self.tokens:
+        for _ in range(len(transformed_graph) - 1):
+            for token in transformed_graph:
                 for neighbor in transformed_graph[token]:
+                    if neighbor not in distances:  # Ensure neighbor exists before accessing it
+                        continue
                     if distances[token] + transformed_graph[token][neighbor] < distances[neighbor]:
                         distances[neighbor] = distances[token] + transformed_graph[token][neighbor]
                         predecessors[neighbor] = token
@@ -39,8 +49,10 @@ class ArbitrageDetector:
         negative_cycles = []
         visited_cycles = set()
         
-        for token in self.tokens:
+        for token in transformed_graph:
             for neighbor in transformed_graph[token]:
+                if neighbor not in distances:  # Ensure valid neighbor before checking cycle
+                    continue
                 if distances[token] + transformed_graph[token][neighbor] < distances[neighbor]:
                     cycle = self.extract_arbitrage_cycle(predecessors, neighbor)
                     if cycle and tuple(cycle) not in visited_cycles:
@@ -68,10 +80,10 @@ class ArbitrageDetector:
 
     def detect_arbitrage(self):
         """Detects all arbitrage opportunities in a single Bellman-Ford pass."""
-        if not self.tokens:
+        if not self.graph:
             return []
 
-        start_token = self.tokens[0]  # Pick any token as starting node
+        start_token = next(iter(self.graph))  
         detected_cycles = self.bellman_ford_all_cycles(start_token)
         
         arbitrage_opportunities = []
