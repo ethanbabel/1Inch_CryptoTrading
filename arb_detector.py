@@ -80,6 +80,8 @@ class ArbitrageDetector:
 
     def detect_arbitrage(self):
         """Detects all arbitrage opportunities in a single Bellman-Ford pass."""
+        print("🔍 Detecting arbitrage opportunities...")
+
         if not self.graph:
             return []
 

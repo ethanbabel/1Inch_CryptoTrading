@@ -92,7 +92,7 @@ if __name__ == "__main__":
     num_fetchers = 3  # Adjust as needed
     fetcher_token_pairs = [token_pairs[i::num_fetchers] for i in range(num_fetchers)]
 
-    rate_limit = 0.5 # Max requests per second
+    rate_limit = 0.7 # Max requests per second
 
     driver = Driver(fetcher_token_pairs, rate_limit)
     driver.run()
