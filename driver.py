@@ -3,9 +3,16 @@ import time
 import queue
 import itertools
 import copy
+import pandas as pd
+from dotenv import load_dotenv
+import os
+import requests
 from price_fetcher import PriceFetcher
 from arb_detector import ArbitrageDetector
 from api_throttler import APIThrottler
+
+load_dotenv()
+ONEINCH_API_KEY = os.getenv("1INCH_API_KEY")
 
 class Driver:
     def __init__(self, token_groups, rate_limit):
@@ -71,28 +78,58 @@ class Driver:
         update_thread.join()
         arb_thread.join()
 
-if __name__ == "__main__":
-    # Define token addresses
-    tokens = {
-        "USDT": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-        "ETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        "DAI": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-        "BNB": "0xb8c77482e45f1f44de1745f52c74426c631bdd52",
-        "LINK": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
-        "WBTC": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
+def get_available_tokens():
+    """Fetch the list of tokens supported by 1inch."""
+    url = "https://api.1inch.dev/swap/v6.0/1/tokens"
+    headers = {
+        "Authorization": f"Bearer {ONEINCH_API_KEY}",
+        "accept": "application/json"
     }
+    response = requests.get(url, headers=headers)
+    time.sleep(1)  # Rate limit API calls
+        
+    if response.status_code == 200:
+        data = response.json()
+        return {token: details["address"] for token, details in data["tokens"].items()}
+    else:
+        print(f"⚠️ Failed to fetch available tokens from 1inch. Status: {response.status_code}")
+        return {}
 
-    # Generate all unique token pairs
-    token_pairs = list(itertools.combinations(tokens.items(), 2))  # List of ((ticker1, address1), (ticker2, address2))
 
-    # Convert list of tuples to list of (ticker, address) pairs
-    token_pairs = [(t1[0], t1[1], t2[0], t2[1]) for t1, t2 in token_pairs]  # Convert to (ticker1, address1, ticker2, address2)
+if __name__ == "__main__":
+    # Load all tokens from CSV
+    tokens_df = pd.read_csv("tokens_data/tokens_database_with_decimals.csv")
+    all_tokens = dict(zip(tokens_df["ticker"], tokens_df["address"]))
+
+    print(f"📊 Loaded {len(all_tokens)} tokens from CSV.")
+
+    # Get supported tokens from 1inch
+    available_tokens = get_available_tokens()
+
+    print(f"🔍 Fetched {len(available_tokens)} tokens supported by 1inch.")
+
+    # Filter out tokens that are not supported on 1inch
+    filtered_tokens = {symbol: address for symbol, address in all_tokens.items() if address in available_tokens}
+    
+    print(f"✅ {len(filtered_tokens)} tokens have liquidity on 1inch.")
+
+    # Generate valid token pairs
+    token_pairs = list(itertools.combinations(filtered_tokens.items(), 2))
+
+    # Convert pairs into (symbol1, address1, symbol2, address2)
+    token_pairs = [(t1[0], t1[1], t2[0], t2[1]) for t1, t2 in token_pairs]
+
+    # Configure number of fetchers
+    num_fetchers = min(5, len(token_pairs))
 
     # Distribute token pairs evenly among fetchers
-    num_fetchers = 3  # Adjust as needed
     fetcher_token_pairs = [token_pairs[i::num_fetchers] for i in range(num_fetchers)]
 
-    rate_limit = 0.7 # Max requests per second
+    print(f"🚀 Starting with {num_fetchers} fetchers, each handling ~{len(fetcher_token_pairs[0])} pairs.")
 
+    # Define API rate limit per fetcher
+    rate_limit = 0.5
+
+    # Initialize and start driver
     driver = Driver(fetcher_token_pairs, rate_limit)
     driver.run()
